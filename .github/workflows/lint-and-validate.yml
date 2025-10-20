@@ -1,0 +1,151 @@
+name: Lint and Validate
+
+on:
+  workflow_call:
+    inputs:
+      project_type:
+        description: 'Type of project: django, react, or helm'
+        required: true
+        type: string
+      python_version:
+        description: 'Python version (for Django projects)'
+        required: false
+        type: string
+        default: '3.14'
+      node_version:
+        description: 'Node.js version (for React projects)'
+        required: false
+        type: string
+        default: '20'
+      working_directory:
+        description: 'Working directory for the project'
+        required: false
+        type: string
+        default: '.'
+
+jobs:
+  lint-django:
+    if: inputs.project_type == 'django'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort pylint pylint-django
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run Black (code formatter check)
+        working-directory: ${{ inputs.working_directory }}
+        run: black --check --diff .
+        continue-on-error: true
+
+      - name: Run isort (import sorting check)
+        working-directory: ${{ inputs.working_directory }}
+        run: isort --check-only --diff .
+        continue-on-error: true
+
+      - name: Run Flake8 (linter)
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run Django checks
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          python manage.py check --deploy
+        env:
+          DJANGO_SETTINGS_MODULE: gwiazdeczkowe_api.settings
+          SECRET_KEY: dummy-secret-key-for-ci
+          DEBUG: 'False'
+          ALLOWED_HOSTS: localhost
+          DATABASE_URL: sqlite:///dummy.db
+
+  lint-react:
+    if: inputs.project_type == 'react'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: 'npm'
+          cache-dependency-path: ${{ inputs.working_directory }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working_directory }}
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ${{ inputs.working_directory }}
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run TypeScript check
+        working-directory: ${{ inputs.working_directory }}
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Check formatting with Prettier
+        working-directory: ${{ inputs.working_directory }}
+        run: npx prettier --check "src/**/*.{js,jsx,ts,tsx,json,css,scss,md}"
+        continue-on-error: true
+
+  lint-helm:
+    if: inputs.project_type == 'helm'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Run Helm lint
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          for chart in */Chart.yaml; do
+            chart_dir=$(dirname "$chart")
+            echo "Linting $chart_dir..."
+            helm lint "$chart_dir"
+          done
+
+      - name: Validate Helm templates
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          for chart in */Chart.yaml; do
+            chart_dir=$(dirname "$chart")
+            echo "Validating templates in $chart_dir..."
+            helm template test "$chart_dir" --debug
+          done
+
+  summary:
+    needs: [lint-django, lint-react, lint-helm]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lint Summary
+        run: |
+          echo "### Lint and Validation Complete! :mag:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Project Type:** \`${{ inputs.project_type }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Working Directory:** \`${{ inputs.working_directory }}\`" >> $GITHUB_STEP_SUMMARY
