@@ -35,17 +35,10 @@ on:
         required: false
         type: string
         default: '10m'
-    secrets:
-      KUBECONFIG:
-        description: 'Kubernetes config file content'
-        required: true
 
 jobs:
   deploy:
     runs-on: self-hosted
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - name: Checkout code
@@ -56,21 +49,12 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Configure AWS credentials (for KMS)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::891377311428:role/GitHubActionsOIDCRole
-          aws-region: eu-west-1
-
-      - name: Setup Kubeconfig
+      - name: Verify Kubeconfig exists
         run: |
-          mkdir -p $HOME/.kube
-          # Decrypt KMS-encrypted kubeconfig
-          aws kms decrypt \
-            --ciphertext-blob fileb://<(echo "${{ secrets.KUBECONFIG }}" | base64 -d) \
-            --output text \
-            --query Plaintext \
-            | base64 -d > $HOME/.kube/config
+          if [ ! -f $HOME/.kube/config ]; then
+            echo "Error: kubeconfig not found at $HOME/.kube/config"
+            exit 1
+          fi
           chmod 600 $HOME/.kube/config
 
       - name: Verify Kubernetes connection
