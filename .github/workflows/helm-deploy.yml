@@ -38,7 +38,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: gwiazdeczkowe-runners
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
