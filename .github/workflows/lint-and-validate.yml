@@ -122,20 +122,44 @@ jobs:
       - name: Run Helm lint
         working-directory: ${{ inputs.working_directory }}
         run: |
-          for chart in */Chart.yaml; do
-            chart_dir=$(dirname "$chart")
-            echo "Linting $chart_dir..."
-            helm lint "$chart_dir"
-          done
+          # Check if Chart.yaml exists in current directory
+          if [ -f "Chart.yaml" ]; then
+            echo "Linting chart in current directory..."
+            helm lint .
+          fi
+
+          # Check for charts in subdirectories
+          if ls */Chart.yaml 2>/dev/null; then
+            for chart in */Chart.yaml; do
+              chart_dir=$(dirname "$chart")
+              echo "Linting $chart_dir..."
+              helm lint "$chart_dir"
+            done
+          fi
+
+          # If no charts found, exit with error
+          if [ ! -f "Chart.yaml" ] && ! ls */Chart.yaml 2>/dev/null; then
+            echo "Error: No Helm charts found (no Chart.yaml in current dir or subdirs)"
+            exit 1
+          fi
 
       - name: Validate Helm templates
         working-directory: ${{ inputs.working_directory }}
         run: |
-          for chart in */Chart.yaml; do
-            chart_dir=$(dirname "$chart")
-            echo "Validating templates in $chart_dir..."
-            helm template test "$chart_dir" --debug
-          done
+          # Validate chart in current directory
+          if [ -f "Chart.yaml" ]; then
+            echo "Validating templates in current directory..."
+            helm template test . --debug
+          fi
+
+          # Validate charts in subdirectories
+          if ls */Chart.yaml 2>/dev/null; then
+            for chart in */Chart.yaml; do
+              chart_dir=$(dirname "$chart")
+              echo "Validating templates in $chart_dir..."
+              helm template test "$chart_dir" --debug
+            done
+          fi
 
   summary:
     needs: [lint-django, lint-react, lint-helm]
