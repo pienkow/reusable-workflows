@@ -43,6 +43,9 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -53,10 +56,21 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Configure AWS credentials (for KMS)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::891377311428:role/GitHubActionsOIDCRole
+          aws-region: eu-west-1
+
       - name: Setup Kubeconfig
         run: |
           mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          # Decrypt KMS-encrypted kubeconfig
+          aws kms decrypt \
+            --ciphertext-blob fileb://<(echo "${{ secrets.KUBECONFIG }}" | base64 -d) \
+            --output text \
+            --query Plaintext \
+            | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
 
       - name: Verify Kubernetes connection
