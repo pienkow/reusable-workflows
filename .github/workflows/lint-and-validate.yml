@@ -26,7 +26,7 @@ on:
 jobs:
   lint-django:
     if: inputs.project_type == 'django'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -74,7 +74,7 @@ jobs:
 
   lint-react:
     if: inputs.project_type == 'react'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -108,7 +108,7 @@ jobs:
 
   lint-helm:
     if: inputs.project_type == 'helm'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -140,7 +140,7 @@ jobs:
   summary:
     needs: [lint-django, lint-react, lint-helm]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Lint Summary
