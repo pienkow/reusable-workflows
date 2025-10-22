@@ -67,10 +67,6 @@ jobs:
           # Update image tag in values.yaml
           sed -i "s/tag: .*/tag: \"${{ inputs.version }}\"/" ${{ inputs.chart_path }}/values.yaml
 
-          # Update fullnameOverride to include version
-          VERSION_SLUG=$(echo "${{ inputs.version }}" | tr '.' '-')
-          sed -i "s/fullnameOverride: .*/fullnameOverride: \"${{ inputs.release_name }}-v${VERSION_SLUG}\"/" ${{ inputs.chart_path }}/values.yaml
-
       - name: Helm lint
         run: |
           helm lint ${{ inputs.chart_path }}
