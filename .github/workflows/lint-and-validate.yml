@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: '.'
+      skip_typescript:
+        description: 'Skip TypeScript type checking (for JSX-only projects)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   lint-django:
@@ -104,6 +109,7 @@ jobs:
         continue-on-error: true
 
       - name: Run TypeScript check
+        if: inputs.skip_typescript != true
         working-directory: ${{ inputs.working_directory }}
         run: npx tsc --noEmit
         continue-on-error: true
