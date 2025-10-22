@@ -79,6 +79,7 @@ jobs:
         run: |
           HELM_CMD="helm upgrade --install ${{ inputs.release_name }} ${{ inputs.chart_path }} \
             --namespace ${{ inputs.namespace }} \
+            --values values.yaml \
             --timeout ${{ inputs.timeout }} \
             --wait"
 
