@@ -35,6 +35,10 @@ on:
         required: false
         type: string
         default: '10m'
+    secrets:
+      KUBECONFIG:
+        description: 'Kubernetes config file content'
+        required: true
 
 jobs:
   deploy:
@@ -49,12 +53,10 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Verify Kubeconfig exists
+      - name: Setup Kubeconfig
         run: |
-          if [ ! -f $HOME/.kube/config ]; then
-            echo "Error: kubeconfig not found at $HOME/.kube/config"
-            exit 1
-          fi
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
 
       - name: Verify Kubernetes connection
