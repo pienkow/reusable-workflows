@@ -58,6 +58,8 @@ jobs:
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
+          echo "Kubeconfig file created at $HOME/.kube/config"
+          ls -la $HOME/.kube/config
 
       - name: Verify Kubernetes connection
         run: |
