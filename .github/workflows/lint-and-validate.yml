@@ -31,7 +31,7 @@ on:
 jobs:
   lint-django:
     if: inputs.project_type == 'django'
-    runs-on: {{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ vars.DEFAULT_RUNNER }}
 
     steps:
       - name: Checkout code
@@ -86,7 +86,7 @@ jobs:
 
   lint-react:
     if: inputs.project_type == 'react'
-    runs-on: {{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ vars.DEFAULT_RUNNER }}
 
     steps:
       - name: Checkout code
@@ -121,7 +121,7 @@ jobs:
 
   lint-helm:
     if: inputs.project_type == 'helm'
-    runs-on: {{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ vars.DEFAULT_RUNNER }}
 
     steps:
       - name: Checkout code
@@ -177,7 +177,7 @@ jobs:
   summary:
     needs: [lint-django, lint-react, lint-helm]
     if: always()
-    runs-on: {{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ vars.DEFAULT_RUNNER }}
 
     steps:
       - name: Lint Summary
