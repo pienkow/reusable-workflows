@@ -36,7 +36,7 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: self-hosted
+    runs-on: {{ vars.DEFAULT_RUNNER }}
 
     steps:
       - name: Checkout code
