@@ -56,10 +56,17 @@ jobs:
       - name: Setup Kubeconfig
         run: |
           mkdir -p $HOME/.kube
+          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
+            echo "ERROR: KUBECONFIG secret is empty!"
+            exit 1
+          fi
           echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
           echo "Kubeconfig file created at $HOME/.kube/config"
           ls -la $HOME/.kube/config
+          echo "Kubeconfig file size: $(wc -c < $HOME/.kube/config) bytes"
+          echo "First line of kubeconfig (for verification):"
+          head -n 1 $HOME/.kube/config
 
       - name: Verify Kubernetes connection
         run: |
