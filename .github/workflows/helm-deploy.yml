@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: '10m'
+      environment:
+        description: 'GitHub Environment name for deployment protection (e.g., development, production)'
+        required: false
+        type: string
+        default: ''
     secrets:
       KUBECONFIG:
         description: 'Kubernetes config file content'
@@ -43,6 +48,7 @@ on:
 jobs:
   deploy:
     runs-on: ${{ vars.DEFAULT_RUNNER }}
+    environment: ${{ inputs.environment != '' && inputs.environment || null }}
 
     steps:
       - name: Checkout code
