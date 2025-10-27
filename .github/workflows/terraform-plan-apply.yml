@@ -1,0 +1,401 @@
+name: Terraform Plan & Apply
+
+on:
+  workflow_call:
+    inputs:
+      terraform_version:
+        description: 'Terraform version to use'
+        required: false
+        type: string
+        default: '1.10.5'
+      terraform_dir:
+        description: 'Directory containing Terraform configuration'
+        required: true
+        type: string
+      s3_plan_bucket:
+        description: 'S3 bucket for storing plans'
+        required: false
+        type: string
+        default: 'terraform-plans'
+      s3_plan_key:
+        description: 'S3 key for plan file (e.g., "myapp/prod.tfplan")'
+        required: true
+        type: string
+      backend_config:
+        description: 'Backend configuration as JSON object (e.g., {"bucket":"my-bucket","key":"state.tfstate"})'
+        required: false
+        type: string
+        default: '{}'
+      tf_vars:
+        description: 'Terraform variables as JSON object (e.g., {"var1":"value1","var2":"value2"})'
+        required: false
+        type: string
+        default: '{}'
+      working_directory:
+        description: 'Working directory to run commands from'
+        required: false
+        type: string
+        default: '.'
+      runs_on:
+        description: 'Runner to use (ubuntu-latest, self-hosted, etc.)'
+        required: false
+        type: string
+        default: 'self-hosted'
+      auto_apply:
+        description: 'Automatically apply if changes detected'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      tf_secrets:
+        description: 'Terraform secrets as JSON object (e.g., {"SECRET1":"value1","SECRET2":"value2"})'
+        required: false
+      aws_access_key:
+        description: 'AWS Access Key for S3 backend and plan storage'
+        required: true
+      aws_secret_key:
+        description: 'AWS Secret Key for S3 backend and plan storage'
+        required: true
+    outputs:
+      has_changes:
+        description: 'Whether the plan has changes'
+        value: ${{ jobs.plan.outputs.has_changes }}
+      changes_summary:
+        description: 'Summary of changes (add/change/destroy)'
+        value: ${{ jobs.plan.outputs.changes_summary }}
+      terraform_outputs:
+        description: 'Terraform outputs as JSON (only if applied)'
+        value: ${{ jobs.apply.outputs.tf_outputs }}
+
+jobs:
+  plan:
+    name: Terraform Plan
+    runs-on: ${{ inputs.runs_on }}
+    outputs:
+      has_changes: ${{ steps.check_changes.outputs.has_changes }}
+      changes_summary: ${{ steps.check_changes.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+
+      - name: Parse backend config
+        id: backend
+        run: |
+          echo "Parsing backend configuration..."
+          BACKEND_CONFIG='${{ inputs.backend_config }}'
+
+          # Convert JSON to terraform init flags
+          BACKEND_FLAGS=""
+          if [ "$BACKEND_CONFIG" != "{}" ]; then
+            while IFS= read -r line; do
+              key=$(echo "$line" | jq -r '.key')
+              value=$(echo "$line" | jq -r '.value')
+              if [ ! -z "$key" ] && [ "$key" != "null" ] && [ ! -z "$value" ] && [ "$value" != "null" ]; then
+                BACKEND_FLAGS="$BACKEND_FLAGS -backend-config=\"$key=$value\""
+              fi
+            done < <(echo "$BACKEND_CONFIG" | jq -c 'to_entries[]')
+          fi
+
+          echo "backend_flags<<EOF" >> $GITHUB_OUTPUT
+          echo "$BACKEND_FLAGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Initialize Terraform
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          cd ${{ inputs.terraform_dir }}
+          echo "🔧 Initializing Terraform..."
+
+          if [ -n "${{ steps.backend.outputs.backend_flags }}" ]; then
+            eval terraform init ${{ steps.backend.outputs.backend_flags }}
+          else
+            terraform init
+          fi
+
+          echo "✅ Terraform initialized"
+
+      - name: Set Terraform variables
+        id: vars
+        run: |
+          echo "Setting up Terraform variables..."
+
+          # Parse input variables
+          TF_VARS='${{ inputs.tf_vars }}'
+
+          # Parse secrets
+          TF_SECRETS='${{ secrets.tf_secrets }}'
+
+          # Create vars file
+          ENV_FILE=$(mktemp)
+
+          # Add regular variables
+          if [ "$TF_VARS" != "{}" ]; then
+            echo "$TF_VARS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
+          fi
+
+          # Add secrets
+          if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
+            echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
+          fi
+
+          echo "env_file=$ENV_FILE" >> $GITHUB_OUTPUT
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          cd ${{ inputs.terraform_dir }}
+
+          # Source environment variables
+          if [ -f "${{ steps.vars.outputs.env_file }}" ]; then
+            set -a
+            source "${{ steps.vars.outputs.env_file }}"
+            set +a
+          fi
+
+          echo "📋 Running Terraform plan..."
+          terraform plan -out=tfplan -no-color | tee plan_output.txt
+          echo "✅ Plan completed"
+
+      - name: Check for changes
+        id: check_changes
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          cd ${{ inputs.terraform_dir }}
+
+          echo "🔍 Analyzing plan for changes..."
+
+          # Check if plan has changes
+          if grep -q "No changes" plan_output.txt; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "summary=No changes detected" >> $GITHUB_OUTPUT
+            echo "ℹ️  No changes detected in plan"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+
+            # Extract summary
+            ADD=$(grep -oP '\d+(?= to add)' plan_output.txt || echo "0")
+            CHANGE=$(grep -oP '\d+(?= to change)' plan_output.txt || echo "0")
+            DESTROY=$(grep -oP '\d+(?= to destroy)' plan_output.txt || echo "0")
+
+            SUMMARY="Changes: +$ADD ~$CHANGE -$DESTROY"
+            echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+            echo "✅ $SUMMARY"
+          fi
+
+      - name: Upload plan to S3
+        if: steps.check_changes.outputs.has_changes == 'true'
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          cd ${{ inputs.terraform_dir }}
+
+          echo "📤 Uploading plan to S3..."
+          aws s3 cp tfplan s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }}
+
+          echo "✅ Plan uploaded to s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }}"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f "${{ steps.vars.outputs.env_file }}" ]; then
+            rm -f "${{ steps.vars.outputs.env_file }}"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 📋 Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Has Changes:** ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Changes:** ${{ steps.check_changes.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check_changes.outputs.has_changes }}" = "true" ]; then
+            echo "📤 Plan uploaded to S3: \`s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }}\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  apply:
+    name: Terraform Apply
+    runs-on: ${{ inputs.runs_on }}
+    needs: plan
+    if: needs.plan.outputs.has_changes == 'true' && inputs.auto_apply == true
+    outputs:
+      tf_outputs: ${{ steps.output.outputs.result }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+
+      - name: Parse backend config
+        id: backend
+        run: |
+          echo "Parsing backend configuration..."
+          BACKEND_CONFIG='${{ inputs.backend_config }}'
+
+          # Convert JSON to terraform init flags
+          BACKEND_FLAGS=""
+          if [ "$BACKEND_CONFIG" != "{}" ]; then
+            while IFS= read -r line; do
+              key=$(echo "$line" | jq -r '.key')
+              value=$(echo "$line" | jq -r '.value')
+              if [ ! -z "$key" ] && [ "$key" != "null" ] && [ ! -z "$value" ] && [ "$value" != "null" ]; then
+                BACKEND_FLAGS="$BACKEND_FLAGS -backend-config=\"$key=$value\""
+              fi
+            done < <(echo "$BACKEND_CONFIG" | jq -c 'to_entries[]')
+          fi
+
+          echo "backend_flags<<EOF" >> $GITHUB_OUTPUT
+          echo "$BACKEND_FLAGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Initialize Terraform
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          cd ${{ inputs.terraform_dir }}
+          echo "🔧 Initializing Terraform..."
+
+          if [ -n "${{ steps.backend.outputs.backend_flags }}" ]; then
+            eval terraform init ${{ steps.backend.outputs.backend_flags }}
+          else
+            terraform init
+          fi
+
+          echo "✅ Terraform initialized"
+
+      - name: Set Terraform variables
+        id: vars
+        run: |
+          echo "Setting up Terraform variables..."
+
+          # Parse input variables
+          TF_VARS='${{ inputs.tf_vars }}'
+
+          # Parse secrets
+          TF_SECRETS='${{ secrets.tf_secrets }}'
+
+          # Create vars file
+          ENV_FILE=$(mktemp)
+
+          # Add regular variables
+          if [ "$TF_VARS" != "{}" ]; then
+            echo "$TF_VARS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
+          fi
+
+          # Add secrets
+          if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
+            echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
+          fi
+
+          echo "env_file=$ENV_FILE" >> $GITHUB_OUTPUT
+
+      - name: Download plan from S3
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          cd ${{ inputs.terraform_dir }}
+
+          echo "📥 Downloading plan from S3..."
+          aws s3 cp s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }} tfplan
+
+          echo "✅ Plan downloaded"
+
+      - name: Terraform Apply
+        id: apply
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          cd ${{ inputs.terraform_dir }}
+
+          # Source environment variables
+          if [ -f "${{ steps.vars.outputs.env_file }}" ]; then
+            set -a
+            source "${{ steps.vars.outputs.env_file }}"
+            set +a
+          fi
+
+          echo "🚀 Applying Terraform changes..."
+          terraform apply -auto-approve tfplan
+          echo "✅ Apply completed"
+
+      - name: Get Terraform outputs
+        id: output
+        working-directory: ${{ inputs.working_directory }}
+        if: success()
+        run: |
+          cd ${{ inputs.terraform_dir }}
+
+          echo "📊 Fetching Terraform outputs..."
+          OUTPUTS=$(terraform output -json 2>/dev/null || echo "{}")
+
+          echo "result<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "✅ Outputs retrieved"
+
+      - name: Cleanup plan from S3
+        if: always()
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key }}
+          AWS_REGION: eu-central-1
+        run: |
+          echo "🧹 Cleaning up plan from S3..."
+          aws s3 rm s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }} || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f "${{ steps.vars.outputs.env_file }}" ]; then
+            rm -f "${{ steps.vars.outputs.env_file }}"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## ✅ Terraform Apply Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Changes Applied:** ${{ needs.plan.outputs.changes_summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🧹 Plan cleaned up from S3" >> $GITHUB_STEP_SUMMARY
