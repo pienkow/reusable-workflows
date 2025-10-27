@@ -16,7 +16,7 @@ on:
         description: 'S3 bucket for storing plans'
         required: false
         type: string
-        default: 'terraform-plans'
+        default: 'pienkow-terraform-plans'
       s3_plan_key:
         description: 'S3 key for plan file (e.g., "myapp/prod.tfplan")'
         required: true
