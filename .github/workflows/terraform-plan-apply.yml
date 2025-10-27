@@ -81,6 +81,14 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set plan path with repository name
+        id: plan_path
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          FULL_PLAN_KEY="${REPO_NAME}/${{ inputs.s3_plan_key }}"
+          echo "full_key=$FULL_PLAN_KEY" >> $GITHUB_OUTPUT
+          echo "📍 Plan will be stored at: s3://${{ inputs.s3_plan_bucket }}/$FULL_PLAN_KEY"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -211,9 +219,9 @@ jobs:
           cd ${{ inputs.terraform_dir }}
 
           echo "📤 Uploading plan to S3..."
-          aws s3 cp tfplan s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }}
+          aws s3 cp tfplan s3://${{ inputs.s3_plan_bucket }}/${{ steps.plan_path.outputs.full_key }}
 
-          echo "✅ Plan uploaded to s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }}"
+          echo "✅ Plan uploaded to s3://${{ inputs.s3_plan_bucket }}/${{ steps.plan_path.outputs.full_key }}"
 
       - name: Cleanup
         if: always()
@@ -233,7 +241,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ steps.check_changes.outputs.has_changes }}" = "true" ]; then
-            echo "📤 Plan uploaded to S3: \`s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "📤 Plan uploaded to S3: \`s3://${{ inputs.s3_plan_bucket }}/${{ steps.plan_path.outputs.full_key }}\`" >> $GITHUB_STEP_SUMMARY
           fi
 
   apply:
@@ -249,6 +257,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Set plan path with repository name
+        id: plan_path
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          FULL_PLAN_KEY="${REPO_NAME}/${{ inputs.s3_plan_key }}"
+          echo "full_key=$FULL_PLAN_KEY" >> $GITHUB_OUTPUT
+          echo "📍 Plan will be downloaded from: s3://${{ inputs.s3_plan_bucket }}/$FULL_PLAN_KEY"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -332,7 +348,7 @@ jobs:
           cd ${{ inputs.terraform_dir }}
 
           echo "📥 Downloading plan from S3..."
-          aws s3 cp s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }} tfplan
+          aws s3 cp s3://${{ inputs.s3_plan_bucket }}/${{ steps.plan_path.outputs.full_key }} tfplan
 
           echo "✅ Plan downloaded"
 
@@ -382,7 +398,7 @@ jobs:
           AWS_REGION: eu-central-1
         run: |
           echo "🧹 Cleaning up plan from S3..."
-          aws s3 rm s3://${{ inputs.s3_plan_bucket }}/${{ inputs.s3_plan_key }} || true
+          aws s3 rm s3://${{ inputs.s3_plan_bucket }}/${{ steps.plan_path.outputs.full_key }} || true
 
       - name: Cleanup
         if: always()
