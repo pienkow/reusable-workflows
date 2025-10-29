@@ -46,6 +46,11 @@ on:
         required: false
         type: boolean
         default: true
+      tf_cli_args:
+        description: 'Additional CLI arguments for terraform plan/apply (e.g., "-var=foo=bar -var=baz=qux")'
+        required: false
+        type: string
+        default: ''
     secrets:
       tf_secrets:
         description: 'Terraform secrets as JSON object (e.g., {"SECRET1":"value1","SECRET2":"value2"})'
@@ -188,7 +193,7 @@ jobs:
           fi
 
           echo "📋 Running Terraform plan..."
-          terraform plan -out=tfplan -no-color | tee plan_output.txt
+          terraform plan -out=tfplan -no-color ${{ inputs.tf_cli_args }} | tee plan_output.txt
           echo "✅ Plan completed"
 
       - name: Check for changes
