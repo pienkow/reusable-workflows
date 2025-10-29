@@ -98,7 +98,14 @@ jobs:
 
       - name: Helm lint
         run: |
-          helm lint ${{ inputs.chart_path }}
+          # Determine which values file to use for linting
+          VALUES_FILE="${{ inputs.values_file }}"
+          if [ -z "$VALUES_FILE" ]; then
+            VALUES_FILE="${{ inputs.chart_path }}/values.yaml"
+          fi
+
+          echo "Linting chart with values file: $VALUES_FILE"
+          helm lint ${{ inputs.chart_path }} --values "$VALUES_FILE"
 
       - name: Helm upgrade/install
         run: |
