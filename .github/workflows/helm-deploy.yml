@@ -40,10 +40,24 @@ on:
         required: false
         type: string
         default: ''
+      cloudflare_purge_cache:
+        description: 'Whether to purge Cloudflare cache after deployment'
+        required: false
+        type: boolean
+        default: true
     secrets:
       KUBECONFIG:
         description: 'Kubernetes config file content'
         required: true
+      CLOUDFLARE_API_TOKEN:
+        description: 'Cloudflare API token for cache purging'
+        required: false
+      CLOUDFLARE_ZONE_ID_KILIMA:
+        description: 'Cloudflare Zone ID for kilima.pl'
+        required: false
+      CLOUDFLARE_ZONE_ID_PARTYFLOW:
+        description: 'Cloudflare Zone ID for partyflow.app'
+        required: false
 
 jobs:
   deploy:
@@ -142,3 +156,57 @@ jobs:
           echo "**Namespace:** \`${{ inputs.namespace }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Chart:** \`${{ inputs.chart_path }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Purge Cloudflare Cache
+        if: ${{ inputs.cloudflare_purge_cache == true && secrets.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          echo "Purging Cloudflare cache for both zones..."
+
+          # Function to purge cache for a zone
+          purge_zone() {
+            local ZONE_ID=$1
+            local ZONE_NAME=$2
+
+            if [ -z "$ZONE_ID" ]; then
+              echo "⚠️ Skipping $ZONE_NAME - Zone ID not provided"
+              return 0
+            fi
+
+            echo "Purging cache for $ZONE_NAME (Zone ID: ${ZONE_ID:0:8}...)"
+
+            HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/cf_response.json \
+              -X POST "https://api.cloudflare.com/v4/zones/$ZONE_ID/purge_cache" \
+              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              --data '{"purge_everything":true}')
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Successfully purged cache for $ZONE_NAME"
+              return 0
+            else
+              echo "❌ Failed to purge cache for $ZONE_NAME (HTTP $HTTP_CODE)"
+              cat /tmp/cf_response.json
+              return 1
+            fi
+          }
+
+          # Purge both zones
+          KILIMA_SUCCESS=0
+          PARTYFLOW_SUCCESS=0
+
+          if [ -n "${{ secrets.CLOUDFLARE_ZONE_ID_KILIMA }}" ]; then
+            purge_zone "${{ secrets.CLOUDFLARE_ZONE_ID_KILIMA }}" "kilima.pl" && KILIMA_SUCCESS=1
+          fi
+
+          if [ -n "${{ secrets.CLOUDFLARE_ZONE_ID_PARTYFLOW }}" ]; then
+            purge_zone "${{ secrets.CLOUDFLARE_ZONE_ID_PARTYFLOW }}" "partyflow.app" && PARTYFLOW_SUCCESS=1
+          fi
+
+          # Add to summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cloudflare Cache Purging" >> $GITHUB_STEP_SUMMARY
+          [ $KILIMA_SUCCESS -eq 1 ] && echo "- ✅ kilima.pl cache purged" >> $GITHUB_STEP_SUMMARY || echo "- ⚠️ kilima.pl cache purge skipped" >> $GITHUB_STEP_SUMMARY
+          [ $PARTYFLOW_SUCCESS -eq 1 ] && echo "- ✅ partyflow.app cache purged" >> $GITHUB_STEP_SUMMARY || echo "- ⚠️ partyflow.app cache purge skipped" >> $GITHUB_STEP_SUMMARY
+
+          # Don't fail the whole workflow if cache purge fails
+          exit 0
