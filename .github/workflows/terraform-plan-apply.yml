@@ -56,6 +56,9 @@ on:
       aws_secret_key:
         description: 'AWS Secret Key for S3 backend and plan storage'
         required: true
+      gh_pat:
+        description: 'GitHub Personal Access Token for private module access'
+        required: true
     outputs:
       has_changes:
         description: 'Whether the plan has changes'
@@ -94,6 +97,12 @@ jobs:
         with:
           terraform_version: ${{ inputs.terraform_version }}
           terraform_wrapper: false
+
+      - name: Configure Git for private modules
+        uses: philips-labs/terraform-private-modules-action@v1
+        with:
+          org: pienkow
+          token: ${{ secrets.gh_pat }}
 
       - name: Parse backend config
         id: backend
@@ -271,6 +280,12 @@ jobs:
         with:
           terraform_version: ${{ inputs.terraform_version }}
           terraform_wrapper: false
+
+      - name: Configure Git for private modules
+        uses: philips-labs/terraform-private-modules-action@v1
+        with:
+          org: pienkow
+          token: ${{ secrets.gh_pat }}
 
       - name: Parse backend config
         id: backend
