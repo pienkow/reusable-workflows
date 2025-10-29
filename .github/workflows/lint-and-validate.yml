@@ -182,7 +182,27 @@ jobs:
           # Validate chart in current directory
           if [ -f "Chart.yaml" ]; then
             echo "Validating templates in current directory..."
-            helm template test . --debug
+
+            # Determine which values file to use (prefer prod, fallback to dev, then default)
+            VALUES_FILE=""
+            if [ -f "values-prod.yaml" ]; then
+              VALUES_FILE="values-prod.yaml"
+              echo "Using values-prod.yaml for template validation"
+            elif [ -f "values-dev.yaml" ]; then
+              VALUES_FILE="values-dev.yaml"
+              echo "Using values-dev.yaml for template validation"
+            elif [ -f "values.yaml" ]; then
+              VALUES_FILE="values.yaml"
+              echo "Using values.yaml for template validation"
+            fi
+
+            # Run helm template with or without values file
+            if [ -n "$VALUES_FILE" ]; then
+              helm template test . --values "$VALUES_FILE" --debug
+            else
+              echo "Warning: No values file found, validating without values"
+              helm template test . --debug
+            fi
           fi
 
           # Validate charts in subdirectories
