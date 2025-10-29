@@ -138,7 +138,27 @@ jobs:
           # Check if Chart.yaml exists in current directory
           if [ -f "Chart.yaml" ]; then
             echo "Linting chart in current directory..."
-            helm lint .
+
+            # Determine which values file to use (prefer prod, fallback to dev, then default)
+            VALUES_FILE=""
+            if [ -f "values-prod.yaml" ]; then
+              VALUES_FILE="values-prod.yaml"
+              echo "Using values-prod.yaml for linting"
+            elif [ -f "values-dev.yaml" ]; then
+              VALUES_FILE="values-dev.yaml"
+              echo "Using values-dev.yaml for linting"
+            elif [ -f "values.yaml" ]; then
+              VALUES_FILE="values.yaml"
+              echo "Using values.yaml for linting"
+            fi
+
+            # Run helm lint with or without values file
+            if [ -n "$VALUES_FILE" ]; then
+              helm lint . --values "$VALUES_FILE"
+            else
+              echo "Warning: No values file found, linting without values"
+              helm lint .
+            fi
           fi
 
           # Check for charts in subdirectories
