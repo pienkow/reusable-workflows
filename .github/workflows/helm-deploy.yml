@@ -86,8 +86,15 @@ jobs:
 
       - name: Update Helm chart version
         run: |
-          # Update image tag in values.yaml
-          sed -i "s/tag: .*/tag: \"${{ inputs.version }}\"/" ${{ inputs.chart_path }}/values.yaml
+          # Determine which values file to update
+          VALUES_FILE="${{ inputs.values_file }}"
+          if [ -z "$VALUES_FILE" ]; then
+            VALUES_FILE="${{ inputs.chart_path }}/values.yaml"
+          fi
+
+          echo "Updating image tag in: $VALUES_FILE"
+          # Update image tag in values file
+          sed -i "s/tag: .*/tag: \"${{ inputs.version }}\"/" "$VALUES_FILE"
 
       - name: Helm lint
         run: |
@@ -95,18 +102,22 @@ jobs:
 
       - name: Helm upgrade/install
         run: |
+          # Determine which values file to use
+          VALUES_FILE="${{ inputs.values_file }}"
+          if [ -z "$VALUES_FILE" ]; then
+            VALUES_FILE="${{ inputs.chart_path }}/values.yaml"
+          fi
+
+          echo "Using values file: $VALUES_FILE"
+
           HELM_CMD="helm upgrade --install ${{ inputs.release_name }} ${{ inputs.chart_path }} \
             --namespace ${{ inputs.namespace }} \
-            --values ${{ inputs.chart_path }}/values.yaml \
+            --values $VALUES_FILE \
             --timeout ${{ inputs.timeout }} \
             --wait"
 
           if [ "${{ inputs.create_namespace }}" = "true" ]; then
             HELM_CMD="$HELM_CMD --create-namespace"
-          fi
-
-          if [ -n "${{ inputs.values_file }}" ]; then
-            HELM_CMD="$HELM_CMD --values ${{ inputs.values_file }}"
           fi
 
           eval $HELM_CMD
