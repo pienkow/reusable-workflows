@@ -160,6 +160,14 @@ jobs:
           # Parse secrets
           TF_SECRETS='${{ secrets.tf_secrets }}'
 
+          # Debug: Print tf_secrets with spaces between characters to avoid masking
+          if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
+            echo "🔍 DEBUG tf_secrets (spaced):"
+            echo "$TF_SECRETS" | sed 's/\(.\)/\1 /g'
+          else
+            echo "⚠️  DEBUG: TF_SECRETS is empty or null"
+          fi
+
           # Create vars file
           ENV_FILE=$(mktemp)
 
@@ -342,6 +350,14 @@ jobs:
 
           # Parse secrets
           TF_SECRETS='${{ secrets.tf_secrets }}'
+
+          # Debug: Print tf_secrets with spaces between characters to avoid masking
+          if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
+            echo "🔍 DEBUG tf_secrets (spaced):"
+            echo "$TF_SECRETS" | sed 's/\(.\)/\1 /g'
+          else
+            echo "⚠️  DEBUG: TF_SECRETS is empty or null"
+          fi
 
           # Create vars file
           ENV_FILE=$(mktemp)
