@@ -121,16 +121,8 @@ jobs:
           echo "❌ Timeout waiting for SSH on $USER@$IP"
           exit 1
 
-      - name: Install Ansible
-        run: |
-          if ! command -v ansible-playbook &> /dev/null; then
-            echo "📦 Installing Ansible..."
-            sudo apt-get update -qq
-            sudo apt-get install -y ansible
-          else
-            echo "✅ Ansible already installed"
-          fi
-          ansible-playbook --version
+      - name: Setup Ansible
+        uses: alex-oleshkevich/setup-ansible@v1.0.1
 
       - name: Run Ansible Playbook
         id: ansible
