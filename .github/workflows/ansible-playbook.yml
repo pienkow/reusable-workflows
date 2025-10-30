@@ -41,6 +41,11 @@ on:
         required: false
         type: string
         default: 'self-hosted'
+      use_custom_ssh_key:
+        description: 'Use custom SSH key (ssh_private_key secret must be provided)'
+        required: false
+        type: boolean
+        default: false
     secrets:
       ssh_private_key:
         description: 'SSH private key for Ansible (optional, uses ~/.ssh default if not provided)'
@@ -71,7 +76,7 @@ jobs:
           fetch-depth: 1
 
       - name: Setup SSH key
-        if: secrets.ssh_private_key != ''
+        if: inputs.use_custom_ssh_key == true
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.ssh_private_key }}" > ~/.ssh/ansible_key
@@ -80,7 +85,7 @@ jobs:
           echo "SSH_KEY_PATH=$SSH_KEY_PATH" >> $GITHUB_ENV
 
       - name: Use default SSH key
-        if: secrets.ssh_private_key == ''
+        if: inputs.use_custom_ssh_key == false
         run: |
           echo "SSH_KEY_PATH=" >> $GITHUB_ENV
           echo "ℹ️  Using default SSH key from ~/.ssh"
@@ -167,7 +172,7 @@ jobs:
           echo "✅ Playbook execution completed successfully"
 
       - name: Cleanup SSH key
-        if: always() && secrets.ssh_private_key != ''
+        if: always() && inputs.use_custom_ssh_key == true
         run: |
           if [ -f ~/.ssh/ansible_key ]; then
             rm -f ~/.ssh/ansible_key
