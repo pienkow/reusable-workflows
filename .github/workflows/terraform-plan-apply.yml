@@ -181,6 +181,10 @@ jobs:
             echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
           fi
 
+          # Debug: Show ENV_FILE contents with spaces
+          echo "🔍 DEBUG ENV_FILE contents (spaced):"
+          cat $ENV_FILE | sed 's/\(.\)/\1 /g'
+
           echo "env_file=$ENV_FILE" >> $GITHUB_OUTPUT
 
       - name: Terraform Plan
@@ -371,6 +375,10 @@ jobs:
           if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
             echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
           fi
+
+          # Debug: Show ENV_FILE contents with spaces
+          echo "🔍 DEBUG ENV_FILE contents (spaced):"
+          cat $ENV_FILE | sed 's/\(.\)/\1 /g'
 
           echo "env_file=$ENV_FILE" >> $GITHUB_OUTPUT
 
