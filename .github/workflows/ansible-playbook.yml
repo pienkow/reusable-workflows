@@ -125,7 +125,8 @@ jobs:
         run: |
           if ! command -v ansible-playbook &> /dev/null; then
             echo "📦 Installing Ansible..."
-            pip3 install --user ansible
+            sudo apt-get update -qq
+            sudo apt-get install -y ansible
           else
             echo "✅ Ansible already installed"
           fi
