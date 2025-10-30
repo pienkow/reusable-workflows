@@ -176,9 +176,9 @@ jobs:
             echo "$TF_VARS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
           fi
 
-          # Add secrets
+          # Add secrets (without TF_VAR_ prefix - these are environment variables for providers)
           if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
-            echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
+            echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' >> $ENV_FILE
           fi
 
           # Debug: Show ENV_FILE contents with spaces
@@ -371,9 +371,9 @@ jobs:
             echo "$TF_VARS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
           fi
 
-          # Add secrets
+          # Add secrets (without TF_VAR_ prefix - these are environment variables for providers)
           if [ ! -z "$TF_SECRETS" ] && [ "$TF_SECRETS" != "null" ]; then
-            echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "TF_VAR_\(.key)=\(.value)"' >> $ENV_FILE
+            echo "$TF_SECRETS" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' >> $ENV_FILE
           fi
 
           # Debug: Show ENV_FILE contents with spaces
