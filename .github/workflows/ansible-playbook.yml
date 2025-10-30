@@ -1,0 +1,183 @@
+name: Ansible Playbook
+
+on:
+  workflow_call:
+    inputs:
+      inventory:
+        description: 'Ansible inventory (IP, hostname, or file path)'
+        required: true
+        type: string
+      playbook:
+        description: 'Path to playbook relative to working_directory'
+        required: true
+        type: string
+      working_directory:
+        description: 'Working directory (repo root)'
+        required: false
+        type: string
+        default: '.'
+      extra_vars:
+        description: 'Extra variables as JSON (e.g., {"db_name":"mydb"})'
+        required: false
+        type: string
+        default: '{}'
+      wait_for_ssh:
+        description: 'Wait for SSH before running playbook'
+        required: false
+        type: boolean
+        default: true
+      ssh_timeout:
+        description: 'SSH wait timeout in seconds'
+        required: false
+        type: number
+        default: 300
+      ssh_user:
+        description: 'SSH user for connection'
+        required: false
+        type: string
+        default: 'maciek'
+      runs_on:
+        description: 'Runner to use'
+        required: false
+        type: string
+        default: 'self-hosted'
+    secrets:
+      ssh_private_key:
+        description: 'SSH private key for Ansible (optional, uses ~/.ssh default if not provided)'
+        required: false
+    outputs:
+      status:
+        description: 'Playbook execution status'
+        value: ${{ jobs.run_playbook.outputs.status }}
+
+jobs:
+  run_playbook:
+    name: Run Ansible Playbook
+    runs-on: ${{ inputs.runs_on }}
+    outputs:
+      status: ${{ steps.ansible.outputs.status }}
+
+    steps:
+      - name: Cleanup build folder
+        run: |
+          echo "🧹 Czyszczenie katalogu roboczego..."
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          echo "✅ Katalog wyczyszczony"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup SSH key
+        if: secrets.ssh_private_key != ''
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ssh_private_key }}" > ~/.ssh/ansible_key
+          chmod 600 ~/.ssh/ansible_key
+          SSH_KEY_PATH=~/.ssh/ansible_key
+          echo "SSH_KEY_PATH=$SSH_KEY_PATH" >> $GITHUB_ENV
+
+      - name: Use default SSH key
+        if: secrets.ssh_private_key == ''
+        run: |
+          echo "SSH_KEY_PATH=" >> $GITHUB_ENV
+          echo "ℹ️  Using default SSH key from ~/.ssh"
+
+      - name: Wait for SSH
+        if: inputs.wait_for_ssh == true
+        run: |
+          TIMEOUT=${{ inputs.ssh_timeout }}
+          INTERVAL=5
+          IP="${{ inputs.inventory }}"
+          USER="${{ inputs.ssh_user }}"
+
+          echo "⏳ Waiting for SSH on $USER@$IP (timeout: ${TIMEOUT}s)"
+
+          elapsed=0
+          while [ $elapsed -lt $TIMEOUT ]; do
+            SSH_CMD="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes"
+
+            if [ -n "$SSH_KEY_PATH" ]; then
+              SSH_CMD="$SSH_CMD -i $SSH_KEY_PATH"
+            fi
+
+            if $SSH_CMD $USER@$IP "exit" 2>/dev/null; then
+              echo "✅ SSH is ready on $USER@$IP"
+              exit 0
+            fi
+
+            echo "⏳ Still waiting... (${elapsed}s/${TIMEOUT}s)"
+            sleep $INTERVAL
+            elapsed=$((elapsed + INTERVAL))
+          done
+
+          echo "❌ Timeout waiting for SSH on $USER@$IP"
+          exit 1
+
+      - name: Install Ansible
+        run: |
+          if ! command -v ansible-playbook &> /dev/null; then
+            echo "📦 Installing Ansible..."
+            pip3 install --user ansible
+          else
+            echo "✅ Ansible already installed"
+          fi
+          ansible-playbook --version
+
+      - name: Run Ansible Playbook
+        id: ansible
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          echo "🎭 Running Ansible playbook..."
+          echo "📍 Playbook: ${{ inputs.playbook }}"
+          echo "🎯 Target: ${{ inputs.inventory }}"
+
+          # Parse extra vars
+          EXTRA_VARS='${{ inputs.extra_vars }}'
+
+          # Build inventory (add comma for single host)
+          INVENTORY="${{ inputs.inventory }},"
+
+          # Build ansible command
+          ANSIBLE_CMD="ansible-playbook -i \"$INVENTORY\""
+
+          # Add SSH key if provided
+          if [ -n "$SSH_KEY_PATH" ]; then
+            ANSIBLE_CMD="$ANSIBLE_CMD --private-key=$SSH_KEY_PATH"
+          fi
+
+          # Add user
+          ANSIBLE_CMD="$ANSIBLE_CMD -u ${{ inputs.ssh_user }}"
+
+          # Add extra vars if provided
+          if [ "$EXTRA_VARS" != "{}" ]; then
+            ANSIBLE_CMD="$ANSIBLE_CMD --extra-vars '$EXTRA_VARS'"
+          fi
+
+          # Add playbook
+          ANSIBLE_CMD="$ANSIBLE_CMD ${{ inputs.playbook }}"
+
+          # Run playbook
+          echo "🚀 Command: $ANSIBLE_CMD"
+          eval $ANSIBLE_CMD
+
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Playbook execution completed successfully"
+
+      - name: Cleanup SSH key
+        if: always() && secrets.ssh_private_key != ''
+        run: |
+          if [ -f ~/.ssh/ansible_key ]; then
+            rm -f ~/.ssh/ansible_key
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🎭 Ansible Playbook Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Target:** \`${{ inputs.inventory }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Playbook:** \`${{ inputs.playbook }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ steps.ansible.outputs.status || 'failed' }}" >> $GITHUB_STEP_SUMMARY
