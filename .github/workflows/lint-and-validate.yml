@@ -27,11 +27,16 @@ on:
         required: false
         type: boolean
         default: false
+      runner:
+        description: 'Runner label to use'
+        required: false
+        type: string
+        default: 'kilima-prod-runners'
 
 jobs:
   lint-django:
     if: inputs.project_type == 'django'
-    runs-on: ${{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - name: Checkout code
@@ -86,7 +91,7 @@ jobs:
 
   lint-react:
     if: inputs.project_type == 'react'
-    runs-on: ${{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - name: Checkout code
@@ -121,7 +126,7 @@ jobs:
 
   lint-helm:
     if: inputs.project_type == 'helm'
-    runs-on: ${{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - name: Checkout code
@@ -217,7 +222,7 @@ jobs:
   summary:
     needs: [lint-django, lint-react, lint-helm]
     if: always()
-    runs-on: ${{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - name: Lint Summary
