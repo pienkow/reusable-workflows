@@ -30,7 +30,7 @@ on:
         description: 'Docker registry URL'
         required: false
         type: string
-        default: '192.168.1.6:30500'
+        default: 'docker.k3s-prod.lan'
     secrets:
       REGISTRY_USERNAME:
         description: 'Docker registry username (optional for private registries)'
@@ -51,8 +51,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           buildkitd-config-inline: |
-            [registry."192.168.1.6:30500"]
-              http = true
+            [registry."docker.k3s-prod.lan"]
               insecure = true
 
       - name: Build and push Docker image
