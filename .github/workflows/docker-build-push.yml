@@ -21,6 +21,11 @@ on:
         description: 'Version tag for the image'
         required: true
         type: string
+      runner:
+        description: 'Runner label to use'
+        required: false
+        type: string
+        default: 'kilima-prod-runners'
       registry:
         description: 'Docker registry URL'
         required: false
@@ -36,7 +41,7 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: ${{ vars.DEFAULT_RUNNER }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - name: Checkout code
