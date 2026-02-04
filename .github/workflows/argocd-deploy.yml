@@ -1,0 +1,96 @@
+name: ArgoCD Deploy
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'ArgoCD application name'
+        required: true
+        type: string
+      revision:
+        description: 'Git revision (tag or branch) to deploy'
+        required: true
+        type: string
+      environment:
+        description: 'GitHub environment (development, production)'
+        required: true
+        type: string
+      runner:
+        description: 'Runner label to use'
+        required: false
+        type: string
+        default: 'kilima-prod-runners'
+      argocd_server:
+        description: 'ArgoCD server address'
+        required: false
+        type: string
+        default: 'argocd.k3s-prod.lan'
+      timeout:
+        description: 'Sync timeout in seconds'
+        required: false
+        type: number
+        default: 300
+    secrets:
+      VAULT_ADDR:
+        description: 'Vault address'
+        required: true
+      VAULT_TOKEN:
+        description: 'Vault token'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ${{ inputs.runner }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+
+      - name: Import ArgoCD credentials from Vault
+        uses: hashicorp/vault-action@v3
+        id: vault
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          token: ${{ secrets.VAULT_TOKEN }}
+          tlsSkipVerify: true
+          secrets: |
+            secret/data/argocd password | ARGOCD_PASSWORD
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ inputs.argocd_server }} \
+            --username admin \
+            --password "${{ steps.vault.outputs.ARGOCD_PASSWORD }}" \
+            --insecure
+
+      - name: Sync Application
+        run: |
+          echo "Setting application ${{ inputs.app_name }} to revision ${{ inputs.revision }}"
+          argocd app set ${{ inputs.app_name }} --revision ${{ inputs.revision }}
+
+          echo "Refreshing application ${{ inputs.app_name }}"
+          argocd app get ${{ inputs.app_name }} --hard-refresh || true
+          sleep 5
+
+          echo "Syncing application ${{ inputs.app_name }}"
+          argocd app sync ${{ inputs.app_name }} --prune --timeout ${{ inputs.timeout }}
+
+      - name: Wait for sync
+        run: |
+          argocd app wait ${{ inputs.app_name }} --health --timeout ${{ inputs.timeout }}
+
+      - name: Show application status
+        run: |
+          argocd app get ${{ inputs.app_name }}
+
+      - name: Deployment Summary
+        run: |
+          echo "### ArgoCD Deployment Successful! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Application:** \`${{ inputs.app_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Revision:** \`${{ inputs.revision }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
