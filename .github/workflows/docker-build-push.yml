@@ -51,6 +51,8 @@ jobs:
         run: |
           echo "${{ secrets.CA_CERT }}" | sudo tee /usr/local/share/ca-certificates/custom-ca.crt > /dev/null
           sudo update-ca-certificates
+          echo "${{ secrets.CA_CERT }}" > /tmp/ca-cert.pem
+          echo "NODE_EXTRA_CA_CERTS=/tmp/ca-cert.pem" >> $GITHUB_ENV
 
       - name: Checkout code
         uses: actions/checkout@v4
