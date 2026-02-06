@@ -67,6 +67,7 @@ jobs:
           url: ${{ secrets.VAULT_ADDR }}
           token: ${{ secrets.VAULT_TOKEN }}
           caCertificate: ${{ secrets.CA_CERT }}
+          tlsSkipVerify: true
           secrets: |
             secret/data/argocd password | ARGOCD_PASSWORD
 

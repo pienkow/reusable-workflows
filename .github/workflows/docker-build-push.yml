@@ -64,6 +64,7 @@ jobs:
           url: ${{ secrets.VAULT_ADDR }}
           token: ${{ secrets.VAULT_TOKEN }}
           caCertificate: ${{ secrets.CA_CERT }}
+          tlsSkipVerify: true
           secrets: |
             secret/data/harbor admin_password | HARBOR_PASSWORD
 
