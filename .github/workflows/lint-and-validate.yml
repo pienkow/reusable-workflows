@@ -137,6 +137,16 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Add Helm repos and build dependencies
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          # Add kilima chart repo if Chart.yaml has dependencies
+          if [ -f "Chart.yaml" ] && grep -q "repository:" Chart.yaml; then
+            helm repo add kilima http://charts.k3s-prod.lan || true
+            helm repo update
+            helm dependency build . || true
+          fi
+
       - name: Run Helm lint
         working-directory: ${{ inputs.working_directory }}
         run: |
