@@ -38,12 +38,20 @@ on:
       VAULT_TOKEN:
         description: 'Vault token'
         required: true
+      CA_CERT:
+        description: 'Custom CA certificate (PEM) for self-signed services'
+        required: true
 
 jobs:
   build-and-push:
     runs-on: ${{ inputs.runner }}
 
     steps:
+      - name: Install CA certificate
+        run: |
+          echo "${{ secrets.CA_CERT }}" | sudo tee /usr/local/share/ca-certificates/custom-ca.crt > /dev/null
+          sudo update-ca-certificates
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -53,7 +61,7 @@ jobs:
         with:
           url: ${{ secrets.VAULT_ADDR }}
           token: ${{ secrets.VAULT_TOKEN }}
-          tlsSkipVerify: true
+          caCertificate: ${{ secrets.CA_CERT }}
           secrets: |
             secret/data/harbor admin_password | HARBOR_PASSWORD
 

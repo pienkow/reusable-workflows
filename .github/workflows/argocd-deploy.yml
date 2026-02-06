@@ -37,6 +37,9 @@ on:
       VAULT_TOKEN:
         description: 'Vault token'
         required: true
+      CA_CERT:
+        description: 'Custom CA certificate (PEM) for self-signed services'
+        required: true
 
 jobs:
   deploy:
@@ -44,6 +47,11 @@ jobs:
     environment: ${{ inputs.environment }}
 
     steps:
+      - name: Install CA certificate
+        run: |
+          echo "${{ secrets.CA_CERT }}" | sudo tee /usr/local/share/ca-certificates/custom-ca.crt > /dev/null
+          sudo update-ca-certificates
+
       - name: Install ArgoCD CLI
         run: |
           curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
@@ -56,7 +64,7 @@ jobs:
         with:
           url: ${{ secrets.VAULT_ADDR }}
           token: ${{ secrets.VAULT_TOKEN }}
-          tlsSkipVerify: true
+          caCertificate: ${{ secrets.CA_CERT }}
           secrets: |
             secret/data/argocd password | ARGOCD_PASSWORD
 
@@ -65,7 +73,7 @@ jobs:
           argocd login ${{ inputs.argocd_server }} \
             --username admin \
             --password "${{ steps.vault.outputs.ARGOCD_PASSWORD }}" \
-            --insecure
+            --grpc-web
 
       - name: Sync Application
         run: |
