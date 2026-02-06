@@ -213,10 +213,10 @@ jobs:
 
             # Run helm template with or without values file
             if [ -n "$VALUES_FILE" ]; then
-              helm template test . --values "$VALUES_FILE" --debug
+              helm template test . --values "$VALUES_FILE" --debug --dependency-update
             else
               echo "Warning: No values file found, validating without values"
-              helm template test . --debug
+              helm template test . --debug --dependency-update
             fi
           fi
 
